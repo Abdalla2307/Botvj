@@ -1852,7 +1852,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             reply_markup=reply_markup,
             parse_mode=enums.ParseMode.HTML
         )
-        elif query.data == "ezay":
+    elif query.data == "ezay":
         buttons = [[
             InlineKeyboardButton('مصطلحات تورنت 🔑', callback_data='imp'),
             InlineKeyboardButton('للمزيد...', url='https://t.me/TorrentSeriess/2735')
