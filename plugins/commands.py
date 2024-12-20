@@ -1,8 +1,4 @@
-# Don't Remove Credit @VJ_Botz
-# Subscribe YouTube Channel For Amazing Bot @Tech_VJ
-# Ask Doubt on telegram @KingVJ01
-
-import os, string, logging, random, asyncio, time, datetime, re, sys, json, base64
+import os, string, logging, random, asyncio, time, datetime, re, sys, json, base64, requests
 from Script import script
 from pyrogram import Client, filters, enums
 from pyrogram.errors import ChatAdminRequired, FloodWait
@@ -1442,3 +1438,212 @@ async def purge_requests(client, message):
             parse_mode=enums.ParseMode.MARKDOWN,
             disable_web_page_preview=True
         )
+
+GENRES = {
+    28: "أكشن", 12: "مغامرات", 16: "رسوم متحركة", 35: "كوميديا",
+    80: "جريمة", 99: "وثائقي", 18: "دراما", 10751: "عائلي",
+    14: "فانتازيا", 36: "تاريخي", 27: "رعب", 10402: "موسيقى",
+    9648: "غموض", 10749: "رومانسي", 878: "خيال علمي", 10770: "تلفزيوني",
+    53: "إثارة", 10752: "حرب", 37: "غربي"
+}
+
+user_recommendations = {}
+
+# دالة جلب الأفلام
+def get_random_movie_by_genre(genre_id, user_id):
+    if user_id not in user_recommendations:
+        user_recommendations[user_id] = set()
+
+    attempts, max_attempts = 0, 80
+    while attempts < max_attempts:
+        page = random.randint(1, 90)
+        url = "https://api.themoviedb.org/3/discover/movie"
+        params = {
+            "api_key": tmdb.api_key,
+            "language": "ar",
+            "sort_by": "popularity.desc",
+            "vote_count.gte": 200,
+            "with_genres": genre_id,
+            "page": page,
+        }
+        response = requests.get(url, params=params).json()
+        movies = response.get("results", [])
+        random.shuffle(movies)
+
+        for movie in movies:
+            movie_id = movie["id"]
+            genre_ids = movie.get("genre_ids", [])
+            if (16 in genre_ids and genre_id != 16) or (99 in genre_ids and genre_id != 99):
+                continue
+
+            if movie_id not in user_recommendations[user_id]:
+                user_recommendations[user_id].add(movie_id)
+                return movie
+        attempts += 1
+    return None
+
+# دالة تنسيق التفاصيل
+def format_movie_details(movie, genre_id):
+    movie_en_url = f"https://api.themoviedb.org/3/movie/{movie['id']}?api_key={tmdb.api_key}&language=en-US"
+    movie_en_response = requests.get(movie_en_url).json()
+    title_en = movie_en_response.get("title", "Unknown Title")
+    year = movie.get("release_date", "Unknown Year")[:4]
+    genres = ", ".join([GENRES.get(gid, "Unknown Genre") for gid in movie.get("genre_ids", [])])
+    overview = movie.get("overview", None)
+    rating = movie.get("vote_average", "Unknown")
+    poster_path = movie.get("poster_path", None)
+    poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
+
+    if not overview:
+        en_overview = movie_en_response.get("overview", "No overview available")
+        try:
+            overview = translator.translate_text(en_overview, target_lang="AR").text
+        except:
+            overview = "القصة غير متوفرة حاليًا."
+
+    text = (
+        f"🎬 **ᴛɪᴛᴛʟᴇ ** <b>{title_en} {year}</b>\n"
+        f"🎭 **ɢᴇɴʀᴇs ** {genres}\n"
+        f"🌟 **ʀᴀᴛɪɴɢ ** {rating}\n"
+        f"📝 **sᴛᴏʀʏ ** <spoiler>{overview}</spoiler>"
+    )
+    return text, poster_url
+
+# تحديث حالة البحث
+async def update_statuses(reply_msg, message_text):
+    statuses = ["●○○○○○○○○", "●●○○○○○○○", "●●●○○○○○○", "●●●●○○○○○", "●●●●●○○○○", "●●●●●●○○○", "●●●●●●●○○", "●●●●●●●●○", "●●●●●●●●●", "💤", "💤💤"]
+    for status in statuses:
+        try:
+            await asyncio.sleep(2)
+            if reply_msg:
+                await reply_msg.edit_text(
+                    f"<b>Searching For :</b>\n<b>{message_text} 🔍</b>\n{status}",
+                    parse_mode=ParseMode.HTML
+                )
+        except Exception as e:
+            print(f"Failed to update message: {e}")
+            break
+
+# التعامل مع "رشح"
+@Client.on_message(filters.text & filters.group & filters.regex(r"^\s*رشح\s*$"))
+async def recommend_movies_handler(client, message):
+    user_id = message.from_user.id  # حفظ معرف المستخدم
+    buttons = create_genre_buttons()  # إنشاء أزرار التصنيفات
+    await message.reply("اختر التصنيف:", reply_markup=buttons)
+
+# أزرار التصنيفات
+def create_genre_buttons():
+    buttons = []
+    row = []
+    for genre_id, genre_name in GENRES.items():
+        row.append(InlineKeyboardButton(genre_name, callback_data=f"genre_{genre_id}"))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    return InlineKeyboardMarkup(buttons)
+
+# اختيار التصنيف
+@Client.on_callback_query(filters.regex(r"^genre_\d+$"))
+async def genre_selected_handler(client, callback_query):
+    genre_id = int(callback_query.data.split("_")[1])
+
+    # التحقق من المستخدم صاحب رسالة "رشح"
+    original_user_id = callback_query.message.reply_to_message.from_user.id
+    current_user_id = callback_query.from_user.id
+
+    if current_user_id != original_user_id:
+        await callback_query.answer("هذا ليس ترشيحك، اكتب كلمة رشح بنفسك ❤", show_alert=True)
+        return
+
+    # حذف رسالة قائمة التصنيفات
+    await callback_query.message.delete()
+
+    # جلب الفيلم
+    movie = get_random_movie_by_genre(genre_id, current_user_id)
+    if not movie:
+        await callback_query.answer("لم يتم العثور على أفلام لهذا التصنيف.", show_alert=True)
+        return
+
+    # تنسيق الرد
+    text, poster_url = format_movie_details(movie, genre_id)
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("ابحث عـن الفيلم 🔍", callback_data=f"search_movie_{movie['id']}")],
+        [InlineKeyboardButton("➡️ هـات فيلم تـاني", callback_data=f"random_{genre_id}")]
+    ])
+
+    # إرسال الفيلم كرسالة جديدة
+    if poster_url:
+        await callback_query.message.reply_to_message.reply_photo(poster_url, caption=text, reply_markup=buttons)
+    else:
+        await callback_query.message.reply_to_message.reply(text, reply_markup=buttons)
+
+# فيلم آخر
+@Client.on_callback_query(filters.regex(r"^random_\d+$"))
+async def random_movie_handler(client, callback_query):
+    genre_id = int(callback_query.data.split("_")[1])
+    original_user_id = callback_query.message.reply_to_message.from_user.id
+    current_user_id = callback_query.from_user.id
+
+    # التحقق من أن المستخدم الحالي هو نفسه صاحب رسالة "رشح"
+    if current_user_id != original_user_id:
+        await callback_query.answer("هذا ليس ترشيحك، اكتب كلمة رشح بنفسك ❤", show_alert=True)
+        return
+
+    # جلب فيلم جديد
+    movie = get_random_movie_by_genre(genre_id, current_user_id)
+    if not movie:
+        await callback_query.answer("لم يتم العثور على أفلام أخرى، حاول مرة أخرى.", show_alert=True)
+        return
+
+    # تنسيق الرد
+    text, poster_url = format_movie_details(movie, genre_id)
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("ابحث عـن الفيلم 🔍", callback_data=f"search_movie_{movie['id']}")],
+        [InlineKeyboardButton("➡️ هـات فيلم تـاني", callback_data=f"random_{genre_id}")]
+    ])
+
+    # تحديث رسالة الفيلم السابقة
+    if poster_url:
+        await callback_query.message.edit_media(
+            media=InputMediaPhoto(media=poster_url, caption=text),
+            reply_markup=buttons
+        )
+    else:
+        await callback_query.message.edit_text(text, reply_markup=buttons)
+
+# بحث عن الفيلم
+@Client.on_callback_query(filters.regex(r"^search_movie_\d+$"))
+async def search_movie_handler(client, callback_query):
+    try:
+        original_user_id = callback_query.message.reply_to_message.from_user.id
+        current_user_id = callback_query.from_user.id
+
+        # التحقق من أن المستخدم الحالي هو نفسه صاحب رسالة "رشح"
+        if current_user_id != original_user_id:
+            await callback_query.answer("هذا ليس ترشيحك، اكتب كلمة 'رشح' بنفسك ❤", show_alert=True)
+            return
+
+        message_caption = callback_query.message.caption or ""
+        movie_line = re.search(r"🎬 ᴛɪᴛᴛʟᴇ \s(.+?)\s(\d{4})", message_caption)
+        if not movie_line:
+            await callback_query.answer("لم أتمكن من استخراج اسم الفيلم، حاول مرة أخرى.", show_alert=True)
+            return
+
+        movie_name = movie_line.group(1).strip()
+        movie_year = movie_line.group(2).strip()
+        search_query = f"{movie_name} {movie_year}"
+
+        reply_msg = await callback_query.message.reply_to_message.reply_text(
+            f"<b>Searching For :</b>\n<b>{search_query} 🔍</b>\n<b>○○○○○○○○○</b>",
+            parse_mode=ParseMode.HTML
+        )
+        asyncio.create_task(update_statuses(reply_msg, search_query))
+
+        from plugins.pm_filter import auto_filter
+        await auto_filter(client, search_query, callback_query.message.reply_to_message, reply_msg, True)
+
+    except Exception as e:
+        print(f"Error during search_movie_handler: {e}")
+        await callback_query.message.reply_text("حدث خطأ أثناء البحث عن الفيلم، حاول مرة أخرى.")
