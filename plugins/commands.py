@@ -1439,6 +1439,11 @@ async def purge_requests(client, message):
             disable_web_page_preview=True
         )
 
+# إعداد TMDb API
+tmdb = TMDb()
+tmdb.api_key = "a879f424734e87b5183095374acef31"
+tmdb.language = "ar"
+
 GENRES = {
     28: "أكشن", 12: "مغامرات", 16: "رسوم متحركة", 35: "كوميديا",
     80: "جريمة", 99: "وثائقي", 18: "دراما", 10751: "عائلي",
