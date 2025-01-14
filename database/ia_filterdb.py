@@ -1,7 +1,3 @@
-# Don't Remove Credit @VJ_Botz
-# Subscribe YouTube Channel For Amazing Bot @Tech_VJ
-# Ask Doubt on telegram @KingVJ01
-
 import logging
 from struct import pack
 import re
@@ -40,7 +36,7 @@ async def save_file(media):
         'file_id': file_id,
         'file_name': file_name,
         'file_size': media.file_size,
-        'caption': media.caption.html if media.caption else None,
+        'caption': media.caption.html if media.caption else None
         'created_at': datetime.now()
     }
     found1 = {'file_name': file_name}
