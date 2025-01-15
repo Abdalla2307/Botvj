@@ -1046,168 +1046,31 @@ async def requests(bot, message):
         ]]
         await message.reply_text("<b>Your request has been added! Please wait for some time.\n\nJoin Channel First & View Request</b>", reply_markup=InlineKeyboardMarkup(btn))
     
-ADMINS = [874241545]  # ضع هنا معرف الـ Admin
-TMDB_API_KEY = "a879f424734e87b5183095374acef31"  # ضع مفتاح API الخاص بك هنا
-TMDB_API_URL_EN = 'https://api.themoviedb.org/3/tv/{tv_id}?api_key=' + TMDB_API_KEY + '&language=en'
-TMDB_API_URL_AR = 'https://api.themoviedb.org/3/tv/{tv_id}?api_key=' + TMDB_API_KEY + '&language=ar'
-
-@Client.on_message(filters.command(["send", "s"]) & filters.user(ADMINS))
+@Client.on_message(filters.command("send") & filters.user(ADMINS))
 async def send_msg(bot, message):
     if message.reply_to_message:
+        target_id = message.text.split(" ", 1)[1]
+        out = "Users Saved In DB Are:\n\n"
+        success = False
         try:
-            target_message = message.reply_to_message
-            original_sender = target_message.from_user.id
-
-            message_text = message.text
-            url_pattern = r'https?://\S+'
-            urls = re.findall(url_pattern, message_text)
-
-            if len(urls) == 1 and "t.me" in urls[0]:
-                # الحالة الأولى: رابط تيليجرام
-                telegram_url = urls[0]
-
-                try:
-                    chat_id, message_id = re.findall(r'\/(\d+)\/(\d+)', telegram_url)[0]
-                    chat_id = f"-100{chat_id}"
-                    telegram_message = await bot.get_messages(int(chat_id), int(message_id))
-                except IndexError as e:
-                    await message.reply_text("<b>Error: Failed to extract chat_id and message_id from URL. Please provide a valid Telegram URL.</b>")
-                    return
-                except Exception as e:
-                    await message.reply_text(f"<b>Error: {e}</b>")
-                    return
-
-                caption = telegram_message.caption
-                media = telegram_message.photo.file_id if telegram_message.photo else None
-
-                # التحقق مما إذا كانت الرسالة تحتوي على أزرار
-                buttons = telegram_message.reply_markup.inline_keyboard if telegram_message.reply_markup else []
-
-                if not caption or not media:
-                    await message.reply_text("<b>Invalid Telegram data: missing caption or media.</b>")
-                    return
-
-                image_url = media
-
-                # إعداد الأزرار للنقل
-                keyboard = InlineKeyboardMarkup(buttons) if buttons else None
-
-                await target_message.reply_photo(photo=image_url, caption=caption, reply_markup=keyboard)
-
-                try:
-                    private_message = await bot.send_photo(
-                        chat_id=original_sender,
-                        photo=image_url,
-                        caption=caption,
-                        reply_markup=keyboard
-                    )
-
-                    if private_message:
-                        try:
-                            await bot.pin_chat_message(
-                                chat_id=original_sender,
-                                message_id=private_message.id,  # استخدم id بدلاً من message_id
-                                both_sides=True
-                            )
-                        except Exception as pin_error:
-                            await message.reply_text(
-                                f"<b>Warning:</b> Could not pin the message in the private chat. Error: {pin_error}"
-                            )
-                except Exception as private_error:
-                    await message.reply_text(
-                        f"<b>Warning:</b> Could not send the private message to the user. Error: {private_error}"
-                    )
-
-                await message.delete()
-
-            elif len(urls) == 2:
-                # الحالة الثانية: رابط TMDb وزر
-                tmdb_url = urls[0]
-                button_url = urls[1]
-
-                try:
-                    tmdb_id = re.findall(r'\d+', tmdb_url)[0]
-                    
-                    # الحصول على اسم المسلسل بالإنجليزية
-                    response_en = requests.get(TMDB_API_URL_EN.format(tv_id=tmdb_id))
-                    print(type(response_en))  # تحقق من نوع الكائن المستجاب
-                    tmdb_response_en = response_en.json()  # تحويل الاستجابة إلى قاموس
-
-                    # الحصول على بيانات المسلسل بالعربية
-                    response_ar = requests.get(TMDB_API_URL_AR.format(tv_id=tmdb_id))
-                    print(type(response_ar))  # تحقق من نوع الكائن المستجاب
-                    tmdb_response_ar = response_ar.json()  # تحويل الاستجابة إلى قاموس
-
-                    # تحقق من استجابات TMDb
-                    if not isinstance(tmdb_response_en, dict) or not isinstance(tmdb_response_ar, dict):
-                        await message.reply_text("<b>Error: Invalid TMDb response format.</b>")
-                        return
-
-                    series_name_en = tmdb_response_en.get('name', '')
-                    overview_ar = tmdb_response_ar.get('overview', '')
-                    poster_path = tmdb_response_ar.get('backdrop_path', '')
-                except Exception as e:
-                    await message.reply_text(f"<b>Error fetching TMDb data: {e}</b>")
-                    return
-
-                if not series_name_en or not poster_path:
-                    await message.reply_text("<b>Invalid TMDb data: missing name or poster.</b>")
-                    return
-
-                image_url = 'https://image.tmdb.org/t/p/w500' + poster_path
-
-                if overview_ar:
-                    caption = (
-                        f"<b>📺 اســم المسلسل: {series_name_en}</b>\n\n"
-                        f"<b>📝 قـصة المسلسل:</b> {overview_ar}\n\n"
-                        f"<b>📍 للحلقـات اضغـط على الـزر ↘️</b>"
-                    )
-                else:
-                    caption = (
-                        f"<b>📺 اســم المسلسل: {series_name_en}</b>\n\n"
-                        f"<b>📍 للحلقـات اضغـط على الـزر ↘️</b>"
-                    )
-
-                command_removed = re.sub(r'^/s|^/send', '', message_text, flags=re.IGNORECASE).strip()
-                button_text = re.sub(url_pattern, '', command_removed).strip()
-
-                button = InlineKeyboardButton(button_text, url=button_url)
-                keyboard = InlineKeyboardMarkup([[button]])
-
-                await target_message.reply_photo(photo=image_url, caption=caption, reply_markup=keyboard)
-
-                try:
-                    private_message = await bot.send_photo(
-                        chat_id=original_sender,
-                        photo=image_url,
-                        caption=caption,
-                        reply_markup=keyboard
-                    )
-
-                    if private_message:
-                        try:
-                            await bot.pin_chat_message(
-                                chat_id=original_sender,
-                                message_id=private_message.id,  # استخدم id بدلاً من message_id
-                                both_sides=True
-                            )
-                        except Exception as pin_error:
-                            await message.reply_text(
-                                f"<b>Warning:</b> Could not pin the message in the private chat. Error: {pin_error}"
-                            )
-                except Exception as private_error:
-                    await message.reply_text(
-                        f"<b>Warning:</b> Could not send the private message to the user. Error: {private_error}"
-                    )
-
-                await message.delete()
+            user = await bot.get_users(target_id)
+            users = await db.get_all_users()
+            async for usr in users:
+                out += f"{usr['id']}"
+                out += '\n'
+            if str(user.id) in str(out):
+                await message.reply_to_message.copy(int(user.id))
+                success = True
             else:
-                await message.reply_text("<b>Please provide a valid URL in the command.</b>")
-
+                success = False
+            if success:
+                await message.reply_text(f"<b>Your message has been successfully send to {user.mention}.</b>")
+            else:
+                await message.reply_text("<b>This user didn't started this bot yet !</b>")
         except Exception as e:
             await message.reply_text(f"<b>Error: {e}</b>")
     else:
-        await message.reply_text("<b>Use this command as a reply to the target message.</b>")
+        await message.reply_text("<b>Use this command as a reply to any message using the target chat id. For eg: /send userid</b>")
 
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
